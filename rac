@@ -1,0 +1,272 @@
+import streamlit as st
+import pandas as pd
+import pickle
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+import os
+import io
+from datetime import datetime
+
+# ===============================
+# CẤU HÌNH TRANG
+# ===============================
+st.set_page_config(
+    page_title="Hệ thống Gợi ý gói thầu phù hợp cho Doanh nghiệp",
+    layout="wide"
+)
+
+# ===============================
+# CSS TÙY CHỈNH GIAO DIỆN & THANH CUỘN
+# ===============================
+st.markdown("""
+<style>
+/* Bo góc khung bảng */
+.stDataFrame {
+    border: 1px solid #e6e9ef;
+    border-radius: 10px;
+}
+/* Tùy chỉnh thanh cuộn */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+
+/* Định dạng các chỉ số Metric */
+[data-testid="stMetricValue"] {
+    font-size: 28px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ===============================
+# DANH MỤC VÙNG MIỀN
+# ===============================
+MIEN_BAC = ['Hà Nội', 'Hải Phòng', 'Hà Giang', 'Cao Bằng', 'Bắc Kạn', 'Tuyên Quang', 'Lào Cai', 'Yên Bái', 'Thái Nguyên', 'Lạng Sơn', 'Quảng Ninh', 'Bắc Giang', 'Phú Thọ', 'Vĩnh Phúc', 'Bắc Ninh', 'Hải Dương', 'Hưng Yên', 'Thái Bình', 'Hà Nam', 'Nam Định', 'Ninh Bình', 'Điện Biên', 'Lai Châu', 'Sơn La', 'Hòa Bình']
+MIEN_TRUNG = ['Thanh Hóa', 'Nghệ An', 'Hà Tĩnh', 'Quảng Bình', 'Quảng Trị', 'Thừa Thiên Huế', 'Đà Nẵng', 'Quảng Nam', 'Quảng Ngãi', 'Bình Định', 'Phú Yên', 'Khánh Hòa', 'Ninh Thuận', 'Bình Thuận', 'Kon Tum', 'Gia Lai', 'Đắk Lắk', 'Đắk Nông', 'Lâm Đồng']
+MIEN_NAM = ['TP Hồ Chí Minh', 'Bình Dương', 'Đồng Nai', 'Bà Rịa - Vũng Tàu', 'Bình Phước', 'Tây Ninh', 'Long An', 'Tiền Giang', 'Bến Tre', 'Trà Vinh', 'Vĩnh Long', 'Đồng Tháp', 'An Giang', 'Kiên Giang', 'Cần Thơ', 'Hậu Giang', 'Sóc Trăng', 'Bạc Liêu', 'Cà Mau']
+
+# ===============================
+# HÀM TRỢ GIÚP
+# ===============================
+def to_excel(df):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Sheet1')
+    return output.getvalue()
+
+def format_currency(value):
+    try:
+        if pd.isna(value) or value == "" or value == 0: return "0"
+        return "{:,.0f}".format(float(value)).replace(",", ".")
+    except: return "0"
+
+def format_date(date_val):
+    try:
+        if pd.isna(date_val) or date_val == "": return "Chưa cập nhật"
+        return pd.to_datetime(date_val).strftime('%d/%m/%Y')
+    except: return str(date_val)
+
+def clean_field_name(field):
+    if pd.isna(field): return "Khác"
+    f = str(field).strip()
+    if f in ['HH', 'Hàng hóa']: return 'Hàng hóa'
+    if f in ['HON_HOP', 'Hỗn hợp']: return 'Hỗn hợp'
+    if f in ['PTV', 'Phi tư vấn']: return 'Phi tư vấn'
+    if f in ['TV', 'Tư vấn']: return 'Tư vấn'
+    if f in ['XL', 'Xây lắp']: return 'Xây lắp'
+    return f
+
+# ===============================
+# TẢI DỮ LIỆU & MODEL
+# ===============================
+@st.cache_resource
+def load_assets():
+    try:
+        with open('models/tfidf_model.pkl', 'rb') as f: tfidf = pickle.load(f)
+        with open('models/tfidf_matrix.pkl', 'rb') as f: tfidf_matrix = pickle.load(f)
+        return tfidf, tfidf_matrix
+    except:
+        st.error("❌ Không tìm thấy mô hình AI tại thư mục 'models/'")
+        st.stop()
+
+@st.cache_data
+def load_data():
+    path = "data/dauthau_data.parquet"
+    if not os.path.exists(path):
+        st.error("❌ Không tìm thấy dữ liệu tại 'data/dauthau_data.parquet'")
+        st.stop()
+    
+    df = pd.read_parquet(path)
+    df['bidecontractorinputresultdtobidprice'] = pd.to_numeric(df['bidecontractorinputresultdtobidprice'], errors='coerce').fillna(0)
+    df['bidonotifycontractorminvestfield'] = df['bidonotifycontractorminvestfield'].apply(clean_field_name)
+    df['dt_opendate'] = pd.to_datetime(df['bidecontractorinputresultdtoopendate'], dayfirst=True, errors='coerce')
+    df['dt_decisiondate'] = pd.to_datetime(df['bidecontractorinputresultdtodecisiondate'], dayfirst=True, errors='coerce')
+
+    list_companies = sorted(df['orgfullname'].dropna().unique())
+    list_provinces = sorted(df['provincename'].dropna().unique())
+    list_fields = sorted(df['bidonotifycontractorminvestfield'].dropna().unique())
+    region_options = ["Tất cả", "Miền Bắc", "Miền Trung", "Miền Nam"] + list_provinces
+    
+    return df, list_companies, region_options, list_fields
+
+tfidf, tfidf_matrix = load_assets()
+df, list_companies, region_options, list_fields = load_data()
+
+# ===============================
+# GIAO DIỆN NHẬP LIỆU
+# ===============================
+st.title("🚀 Hệ thống Gợi ý gói thầu phù hợp cho Doanh nghiệp v12.0")
+st.markdown("---")
+
+user_type = st.radio("Đối tượng doanh nghiệp:", ["Đã có lịch sử đấu thầu", "Doanh nghiệp mới"], horizontal=True)
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    if user_type == "Đã có lịch sử đấu thầu":
+        selected_company = st.selectbox("Chọn doanh nghiệp", ["-- Chọn công ty --"] + list_companies)
+    else:
+        query_input_new = st.text_input("Nhập ngành nghề/doanh nghiệp", placeholder="Ví dụ: Công ty TNHH CỘNG CÀ PHÊ, xây lắp...")
+
+with col2:
+    target_location = st.selectbox("Khu vực ưu tiên", region_options)
+
+with col3:
+    target_field = st.selectbox("Lĩnh vực", ["Tất cả lĩnh vực"] + list_fields)
+
+st.markdown("### 💰 Phân khúc giá dự thầu (VNĐ)")
+price_map = {
+    "0": 0, "1 Tỷ": 1e9, "5 Tỷ": 5e9, "10 Tỷ": 10e9, "30 Tỷ": 30e9, "50 Tỷ": 50e9, 
+    "100 Tỷ": 100e9, "200 Tỷ": 200e9, "300 Tỷ": 300e9, "400 Tỷ": 400e9, "500 Tỷ": 500e9, 
+    "600 Tỷ": 600e9, "700 Tỷ": 700e9, "800 Tỷ": 800e9, "900 Tỷ": 900e9, "1000 Tỷ": 1e12, 
+    "Trên 1000 Tỷ": 1e15
+}
+
+selected_range = st.select_slider(
+    "Kéo để chọn phân khúc ngân sách:",
+    options=list(price_map.keys()),
+    value=("0", "Trên 1000 Tỷ")
+)
+
+start_val = price_map[selected_range[0]]
+end_val = price_map[selected_range[1]]
+
+query_for_ai = ""
+if user_type == "Đã có lịch sử đấu thầu":
+    if selected_company != "-- Chọn công ty --":
+        hist_raw = df[df['orgfullname'] == selected_company].copy()
+        query_for_ai = " ".join(hist_raw['bidonotifycontractormbidname'].astype(str))
+        st.markdown(f"### 📊 Lịch sử đấu thầu đầy đủ: {selected_company}")
+        t1, t2, t3 = st.columns(3)
+        tong_goi = len(hist_raw)
+        so_trung = hist_raw['bidresult'].isin([1, 10]).sum()
+        ti_le = round((so_trung / tong_goi * 100), 1) if tong_goi > 0 else 0
+        t1.metric("Tổng gói đã tham gia", f"{tong_goi} gói")
+        t2.metric("Số gói trúng thầu", f"{so_trung} gói")
+        t3.metric("Tỉ lệ thắng", f"{ti_le}%")
+
+        hist_raw['Kết quả'] = hist_raw['bidresult'].apply(lambda x: "🟢 TRÚNG" if x in [1, 10] else "🔴 KHÔNG TRÚNG")
+        hist_raw['Ngày Mở'] = hist_raw['bidecontractorinputresultdtoopendate'].apply(format_date)
+        hist_raw['Ngày công bộ'] = hist_raw['bidecontractorinputresultdtopublicdate'].apply(format_date)
+        hist_raw['Giá Dự Thầu'] = hist_raw['bidecontractorinputresultdtobidprice'].apply(format_currency)
+        hist_raw['Lý do'] = hist_raw.get('reason', pd.Series(["Không có dữ liệu"]*len(hist_raw))).fillna("Không có dữ liệu")
+        
+        hist_display = hist_raw[['bidonotifycontractormnotifyno', 'bidonotifycontractormbidname', 'bidonotifycontractormprojectname','provincename', 'bidonotifycontractorminvestfield','Ngày Mở', 'Ngày công bộ', 'Giá Dự Thầu', 'Kết quả', 'Lý do']].copy()
+        hist_display.columns = ["Mã gói", "Tên gói thầu", "Tên dự án", "Tỉnh", "Lĩnh vực", "Ngày mở thầu", "Ngày công bố", "Giá dự thầu", "Kết quả", "Lý do trúng/trượt"]
+        st.dataframe(hist_display.sort_values(by="Ngày mở thầu", ascending=False), use_container_width=True, hide_index=True, height=400)
+        st.download_button("📥 Tải lịch sử đầy đủ (Excel)", to_excel(hist_display), f"lich_su_{selected_company.replace(' ', '_')}.xlsx")
+        st.markdown("---")
+else:
+    query_for_ai = query_input_new if 'query_input_new' in locals() else ""
+
+# ===============================
+# PHẦN 2: PHÂN TÍCH GỢI Ý (SỬ DỤNG SESSION STATE ĐỂ FIX RELOAD)
+# ===============================
+if st.button("🔍 PHÂN TÍCH GỢI Ý GÓI THẦU", use_container_width=True):
+    if not query_for_ai:
+        st.warning("⚠️ Vui lòng nhập thông tin hoặc chọn doanh nghiệp để AI phân tích.")
+    else:
+        with st.spinner("AI đang tìm kiếm các gói thầu tiềm năng còn hạn..."):
+            now = datetime.now()
+            res_df = df[(df['dt_opendate'] >= now) | (df['dt_decisiondate'] >= now) | (df['dt_decisiondate'].isna())].copy()
+            res_df = res_df.drop_duplicates(subset=['bidonotifycontractormnotifyno'])
+
+            if res_df.empty:
+                st.error("❌ Không tìm thấy gói thầu nào còn thời hạn.")
+            else:
+                query_vec = tfidf.transform([query_for_ai.lower()])
+                current_tfidf_matrix = tfidf.transform(res_df['bidonotifycontractormbidname'].astype(str).str.lower())
+                sim_scores = cosine_similarity(query_vec, current_tfidf_matrix).flatten()
+                res_df['score'] = (sim_scores * 100).round(1)
+
+                res_df = res_df[(res_df['bidecontractorinputresultdtobidprice'] >= start_val) & (res_df['bidecontractorinputresultdtobidprice'] <= end_val)]
+                
+                if target_location != "Tất cả":
+                    if target_location == "Miền Bắc": pattern = '|'.join(MIEN_BAC)
+                    elif target_location == "Miền Trung": pattern = '|'.join(MIEN_TRUNG)
+                    elif target_location == "Miền Nam": pattern = '|'.join(MIEN_NAM)
+                    else: pattern = target_location
+                    res_df = res_df[res_df['provincename'].str.contains(pattern, case=False, na=False)]
+                
+                if target_field != "Tất cả lĩnh vực":
+                    res_df = res_df[res_df['bidonotifycontractorminvestfield'] == target_field]
+
+                st.session_state['final_results'] = res_df.sort_values(by='score', ascending=False).head(20)
+
+if 'final_results' in st.session_state:
+    final_results = st.session_state['final_results']
+    st.success(f"✅ Tìm thấy {len(final_results)} gói thầu phù hợp nhất.")
+    
+    display_df = final_results.copy()
+    display_df['Giá'] = display_df['bidecontractorinputresultdtobidprice'].apply(format_currency)
+    display_df['Độ phù hợp'] = display_df['score'].astype(str) + "%"
+    display_df['Ngày mở thầu'] = display_df['dt_opendate'].apply(format_date)
+    display_df['Ngày quyết định'] = display_df['dt_decisiondate'].apply(format_date)
+    
+    out_table = display_df[['bidonotifycontractormnotifyno', 'bidonotifycontractormbidname', 'bidonotifycontractormprojectname', 'bidonotifycontractorminvestorname', 'provincename', 'bidonotifycontractorminvestfield', 'Giá','Ngày mở thầu', 'Ngày quyết định', 'Độ phù hợp']]
+    out_table.columns = ["Mã gói", "Tên gói", "Tên dự án", "Chủ đầu tư", "Tỉnh", "Lĩnh vực", "Giá dự thầu","Ngày mở thầu","Ngày quyết định", "Độ phù hợp AI"]
+    
+    st.dataframe(out_table, use_container_width=True, hide_index=True, height=400)
+    st.download_button("📥 Tải danh sách gợi ý (Excel)", to_excel(out_table), "goi_y_goi_thau.xlsx")
+
+    # ===============================
+    # PHẦN 3: PHÂN TÍCH ĐỐI THỦ (KHÔNG RELOAD)
+    # ===============================
+    st.markdown("---")
+    st.subheader("🛡️ PHÂN TÍCH ĐỐI THỦ THEO TỪNG GÓI THẦU GỢI Ý")
+    
+    list_suggested_packages = final_results['bidonotifycontractormbidname'].tolist()
+    selected_package_name = st.selectbox("🎯 Chọn gói thầu bạn muốn soi đối thủ:", list_suggested_packages)
+
+    if selected_package_name:
+        package_info = final_results[final_results['bidonotifycontractormbidname'] == selected_package_name].iloc[0]
+        p_field, p_investor, p_province, p_price = package_info['bidonotifycontractorminvestfield'], package_info['bidonotifycontractorminvestorname'], package_info['provincename'], package_info['bidecontractorinputresultdtobidprice']
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.write(f"📍 Tỉnh: **{p_province}**")
+        c2.write(f"🏗️ Lĩnh vực: **{p_field}**")
+        c3.write(f"🏢 Chủ đầu tư: **{p_investor[:30]}...**")
+        c4.write(f"💰 Giá: **{format_currency(p_price)}**")
+
+        comp_df = df[(df['bidonotifycontractorminvestfield'] == p_field) & ((df['provincename'] == p_province) | (df['bidonotifycontractorminvestorname'] == p_investor))].copy()
+
+        if not comp_df.empty:
+            comp_stats = comp_df.groupby(['taxcode', 'orgfullname']).agg(
+                tong_tg=('bidresult', 'count'),
+                trung_field=('bidonotifycontractorminvestfield', lambda x: (x == p_field).sum()),
+                trung_investor=('bidonotifycontractorminvestorname', lambda x: (x == p_investor).sum()),
+                trung_province=('provincename', lambda x: (x == p_province).sum()),
+                so_lan_trung=('bidresult', lambda x: x.isin([1, 10]).sum())
+            ).reset_index()
+
+            comp_stats['Chỉ số Kỵ Rơ'] = (comp_stats['trung_investor'] * 3) + (comp_stats['trung_province'] * 2) + (comp_stats['trung_field'] * 1)
+            comp_stats['Tỉ lệ thắng (%)'] = (comp_stats['so_lan_trung'] / comp_stats['tong_tg'] * 100).round(1)
+            top_rivals = comp_stats.sort_values(by=['Chỉ số Kỵ Rơ', 'Tỉ lệ thắng (%)'], ascending=False).head(10)
+            top_rivals.columns = ["Mã số thuế", "Tên đối thủ", "Tổng gói tham gia", "Trúng cùng Lĩnh vực", "Trúng tại CĐT này", "Trúng tại Tỉnh này", "Tổng trúng", "Chỉ số Kỵ Rơ", "Tỉ lệ thắng (%)"]
+
+            st.write(f"📊 **Top 10 đối thủ tiềm năng cho gói: {selected_package_name}**")
+            st.dataframe(top_rivals, use_container_width=True, hide_index=True)
+            st.info("💡 **Giải thích:** Chỉ số Kỵ Rơ càng cao chứng tỏ đối thủ có nhiều kinh nghiệm tại Chủ đầu tư/Địa bàn này.")
+
+            
