@@ -207,54 +207,37 @@ else:
 # ===============================
 # PHẦN 2: GỢI Ý GÓI THẦU
 # ===============================
+
 # ===============================
-# HÀM TÍNH TOÁN HYBRID SCORE (ĐỘ TIN CẬY CAO)
+# HÀM TÍNH TOÁN HYBRID SCORE (CHỈ CHẤM ĐIỂM)
 # ===============================
 def calculate_hybrid_score(row, start_val, end_val):
     """
-    Quy trình Hybrid Ranking:
-    1. Lexical Score (TF-IDF): Khớp chuyên môn
-    2. Price Fit: Khớp khả năng tài chính
-    3. Recency: Khớp thời gian thực hiện
+    Hàm này CHỈ tính điểm cho 1 dòng dữ liệu. 
+    Không chứa lệnh lọc res_df ở đây.
     """
     # a. Điểm chuyên môn (TF-IDF đã tính trước đó)
     lexical_score = row['score'] 
     
-    # b. Điểm phân khúc giá (Price Fit)
-    if not res_df.empty:
-    # BỔ SUNG DÒNG NÀY: Lọc cứng giá tiền trước khi tính điểm AI
-     res_df = res_df[
-        (res_df['bidecontractorinputresultdtobidprice'] >= start_val) & 
-        (res_df['bidecontractorinputresultdtobidprice'] <= end_val)
-    ]
-    
-    if res_df.empty:
-        st.warning("⚠️ Không có gói thầu nào nằm trong đúng phân khúc giá này.")
-    else:
-        # Sau đó mới tính điểm Hybrid cho những gói đã lọc đúng giá
-        res_df[['total_score', 'why_recommended']] = res_df.apply(
-            lambda x: calculate_hybrid_score(x, start_val, end_val), axis=1
-        )
-        st.session_state['final_results'] = res_df.sort_values('total_score', ascending=False).head(20)
+    # b. Điểm phân khúc giá (Vì đã lọc cứng ở ngoài nên mặc định là 100)
+    price_score = 100 
 
     # c. Điểm thời gian (Recency)
-    # Ưu tiên các gói sắp mở thầu (còn hạn)
     days_to_open = (row['dt_opendate'] - datetime.now()).days if pd.notna(row['dt_opendate']) else 0
     if days_to_open > 0:
-        recency_score = max(50, 100 - (days_to_open * 2)) # Gói sắp mở trong 1-15 ngày điểm rất cao
+        recency_score = max(50, 100 - (days_to_open * 2)) 
     else:
-        recency_score = 30 # Các gói đã hoặc đang mở thầu
+        recency_score = 30 
 
-    # d. TỔNG HỢP ĐIỂM (Trọng số tối ưu cho độ tin cậy)
-    # 60% Chuyên môn | 25% Giá | 15% Thời gian
+    # d. TỔNG HỢP ĐIỂM (60% Chuyên môn | 25% Giá | 15% Thời gian)
     total_score = (lexical_score * 0.6) + (price_score * 0.25) + (recency_score * 0.15)
     
-    # e. PHÂN TÍCH TỪ AI (WHY RECOMMENDED)
+    # e. PHÂN TÍCH TỪ AI (Lý do gợi ý)
     reasons = []
     if lexical_score > 75: reasons.append("🎯 Chuyên môn rất sát")
     elif lexical_score > 40: reasons.append("✅ Đúng ngành nghề")
     
-    if price_score == 100: reasons.append("💰 Đúng phân khúc vốn")
+    reasons.append("💰 Đúng phân khúc vốn")
     
     if 0 < days_to_open <= 10: reasons.append("⏳ Cơ hội vàng (Sắp đóng)")
     
@@ -263,7 +246,7 @@ def calculate_hybrid_score(row, start_val, end_val):
     return pd.Series([round(total_score, 1), why_recommended])
 
 # ===============================
-# GỢI Ý GÓI THẦU (NÂNG CẤP)
+# GỢI Ý GÓI THẦU (NÂNG CẤP LOGIC LỌC)
 # ===============================
 if 'final_results' not in st.session_state:
     st.session_state['final_results'] = None
@@ -272,29 +255,35 @@ if st.button("🔍 PHÂN TÍCH GỢI Ý GÓI THẦU", use_container_width=True):
     if not query_for_ai:
         st.warning("⚠️ Vui lòng nhập thông tin hoặc chọn doanh nghiệp để AI phân tích.")
     else:
-        with st.spinner("AI đang tính toán Hybrid Ranking..."):
+        with st.spinner("AI đang sàng lọc phân khúc giá..."):
             now = datetime.now()
 
-            # 1. Lọc gói còn hạn hoặc chưa có quyết định
+            # 1. Lọc thời gian & Xóa trùng
             res_df = df[
                 (df['dt_opendate'] >= now) | 
                 (df['dt_decisiondate'] >= now) | 
                 (df['dt_decisiondate'].isna())
             ].copy()
-            
             res_df = res_df.drop_duplicates(subset=['bidonotifycontractormnotifyno'])
 
+            # 2. LỌC CỨNG THEO GIÁ (Sửa lỗi lọc ở đây)
+            res_df = res_df[
+                (res_df['bidecontractorinputresultdtobidprice'] >= start_val) & 
+                (res_df['bidecontractorinputresultdtobidprice'] <= end_val)
+            ]
+
             if res_df.empty:
-                st.error("❌ Hiện tại không tìm thấy gói thầu nào phù hợp thời gian.")
+                st.error(f"❌ Không tìm thấy gói thầu nào trong phân khúc giá từ {format_currency(start_val)} đến {format_currency(end_val)}.")
+                st.session_state['final_results'] = None
             else:
-                # 2. Tính Lexical Score (TF-IDF)
+                # 3. Tính Lexical Score (TF-IDF)
                 query_vec = tfidf.transform([query_for_ai.lower()])
                 bid_names = res_df['bidonotifycontractormbidname'].astype(str).str.lower()
                 current_matrix = tfidf.transform(bid_names)
                 sim_scores = cosine_similarity(query_vec, current_matrix).flatten()
                 res_df['score'] = (sim_scores * 100).round(1)
 
-                # 3. Áp dụng bộ lọc cứng (Vùng miền & Lĩnh vực)
+                # 4. Áp dụng bộ lọc cứng (Vùng miền & Lĩnh vực)
                 if target_location != "Tất cả":
                     if target_location == "Miền Bắc": pattern = '|'.join(MIEN_BAC)
                     elif target_location == "Miền Trung": pattern = '|'.join(MIEN_TRUNG)
@@ -305,13 +294,18 @@ if st.button("🔍 PHÂN TÍCH GỢI Ý GÓI THẦU", use_container_width=True):
                 if target_field != "Tất cả lĩnh vực":
                     res_df = res_df[res_df['bidonotifycontractorminvestfield'] == target_field]
 
-                # 4. TÍNH ĐIỂM HYBRID (Gộp Lexical + Price + Recency)
+                # 5. TÍNH ĐIỂM HYBRID (Chỉ chạy khi có dữ liệu sau lọc)
                 if not res_df.empty:
+                    # Gọi apply để chấm điểm từng dòng
                     res_df[['total_score', 'why_recommended']] = res_df.apply(
                         lambda x: calculate_hybrid_score(x, start_val, end_val), axis=1
                     )
-                    # Chỉ lấy top 20 gói có điểm tổng hợp cao nhất
+                    
+                    # Sắp xếp và lấy Top 20
                     st.session_state['final_results'] = res_df.sort_values('total_score', ascending=False).head(20)
+                else:
+                    st.warning("⚠️ Không tìm thấy gói thầu phù hợp với khu vực/lĩnh vực sau khi lọc giá.")
+                    st.session_state['final_results'] = None
 
 # ===============================
 # HIỂN THỊ KẾT QUẢ CUỐI CÙNG
