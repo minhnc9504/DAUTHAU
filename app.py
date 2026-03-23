@@ -390,7 +390,23 @@ if st.session_state.get('final_results') is not None and not st.session_state['f
         p_province = p_info['provincename']
         p_price = p_info['bidecontractorinputresultdtobidprice']
         
-        lower_b, upper_b = p_price * 0.3, p_price * 2.0
+        # ✅ CẢI THIỆN: Thu hẹp phân khúc giá (50% - 150%) để lọc chính xác hơn
+        lower_b, upper_b = p_price * 0.5, p_price * 1.5
+
+        # ✅ Lấy taxcode của công ty hiện tại để loại trừ chính mình
+        # Ưu tiên: lấy từ selected_company nếu có, hoặc từ final_results
+        current_taxcode = ''
+        current_company = ''
+        
+        if 'selected_company' in dir() and selected_company != "-- Chọn công ty --":
+            company_data = df[df['orgfullname'] == selected_company]
+            if not company_data.empty:
+                current_company = selected_company
+                current_taxcode = company_data.iloc[0].get('taxcode', '')
+        else:
+            # Lấy từ final_results
+            current_company = final_results.iloc[0].get('orgfullname', '')
+            current_taxcode = final_results.iloc[0].get('taxcode', '')
 
         # Hiển thị thông tin gói thầu đã chọn
         info_col1, info_col2, info_col3, info_col4 = st.columns(4)
@@ -409,11 +425,21 @@ if st.session_state.get('final_results') is not None and not st.session_state['f
             'bidecontractorinputresultdtobidprice', 'bidresult'
         ]
 
+        # ✅ CẢI THIỆN: Lọc chặt hơn - kết hợp CĐT + Lĩnh vực + Tỉnh (AND)
+        # Đối thủ tiềm năng = Cùng CĐT HOẶC Cùng Lĩnh vực HOẶC Cùng Tỉnh
         mask = (
             (df['bidonotifycontractorminvestorname'] == p_investor) |
-            (df['bidonotifycontractorminvestfield'] == p_field)
+            (df['bidonotifycontractorminvestfield'] == p_field) |
+            (df['provincename'] == p_province)
         )
+        
         comp_df = df.loc[mask, relevant_cols].copy().reset_index(drop=True)
+
+        # ✅ CẢI THIỆN: Loại trừ chính mình khỏi danh sách đối thủ
+        if current_taxcode:
+            comp_df = comp_df[comp_df['taxcode'] != current_taxcode]
+        if current_company:
+            comp_df = comp_df[comp_df['orgfullname'] != current_company]
 
         if not comp_df.empty:
             # Tạo is_won SAU reset_index để index khớp
@@ -455,6 +481,12 @@ if st.session_state.get('final_results') is not None and not st.session_state['f
             res['Đ.Lĩnh vực'] = get_score('win_f', 'join_f')
             res['Đ.Phân khúc']= get_score('win_seg', 'join_seg')
             res['Tổng Kỵ Rơ'] = res[['Đ.CĐT','Đ.Tỉnh','Đ.Lĩnh vực','Đ.Phân khúc']].sum(axis=1)
+            
+            # ✅ CẢI THIỆN: Tính tổng số lần tham gia để lọc bớt công ty ít kinh nghiệm
+            res['Tổng tham gia'] = res['join_inv'] + res['join_prov'] + res['join_f'] + res['join_seg']
+            
+            # ✅ CẢI THIỆN: Chỉ hiển thị công ty tham gia >= 2 lần (đảm bảo độ tin cậy)
+            res = res[res['Tổng tham gia'] >= 2]
 
             top_rivals = res.sort_values('Tổng Kỵ Rơ', ascending=False).head(10).copy()
 
