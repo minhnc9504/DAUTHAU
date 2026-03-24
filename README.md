@@ -1,135 +1,81 @@
-# Hệ thống Gợi ý gói thầu phù hợp cho Doanh nghiệp
+# Hệ thống Gợi ý gói thầu VietinBank v2.0
 
-Hệ thống gợi ý gói thầu phù hợp cho doanh nghiệp sử dụng thuật toán TF-IDF và Cosine Similarity để tìm kiếm các gói thầu phù hợp nhất với năng lực của doanh nghiệp.
+Hệ thống gợi ý gói thầu offline chạy trên Streamlit, sử dụng dữ liệu lịch sử đấu thầu nội bộ để gợi ý gói thầu phù hợp và phân tích đối thủ cho doanh nghiệp.
 
-## Công nghệ sử dụng
+## Tính năng chính
 
-- **Streamlit**: Framework tạo giao diện web
-- **Pandas**: Xử lý dữ liệu
-- **Scikit-learn**: Machine learning (TF-IDF, Cosine Similarity)
-- **Xlsxwriter**: Xuất file Excel
+- **Hồ sơ doanh nghiệp** — Dashboard lịch sử đấu thầu, tỉ lệ trúng, lĩnh vực/địa bàn mạnh. Từ đây bấm "Gợi ý gói thầu" để nhảy sang tab gợi ý với tên doanh nghiệp đã chọn.
+- **Gợi ý gói thầu** — Hybrid scoring: lexical + historical fit + price fit + recency. Mỗi gói đề xuất đi kèm phân tích đối thủ ngay bên dưới.
+- **Sức khỏe dữ liệu** — Trạng thái artifact, metadata, trọng số scoring.
 
-## Cấu trúc thư mục
+## Cài đặt
+
+```powershell
+py -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+## Các lệnh
+
+| Lệnh | Mô tả |
+|------|--------|
+| `python main.py` | Auto ingest + build + mở UI |
+| `python main.py setup` | Cài dependencies |
+| `python main.py ingest` | CSV → curated parquet |
+| `python main.py build-index` | Build profiles + TF-IDF index |
+| `python main.py rebuild` | Ingest + build toàn bộ |
+| `python main.py serve` | Chỉ mở UI (đã có artifact) |
+| `python main.py run` | Auto check + rebuild nếu cần + mở UI |
+| `python main.py status` | Trạng thái artifact |
+
+## Cấu trúc source code
 
 ```
-├── app.py                 # Ứng dụng Streamlit chính
-├── requirements.txt       # Các thư viện cần thiết
-├── README.md             # File này
+src/project_dau_thau/
+├── settings.py            # Cấu hình, trọng số, paths
 ├── data/
-│   └── dauthau_data.csv  # Dữ liệu gói thầu
-├── models/
-│   ├── tfidf_model.pkl   # Model TF-IDF đã train
-│   └── tfidf_matrix.pkl  # Ma trận TF-IDF
-├── train_model.py        # Script train model
-├── convert_data.py       # Script chuyển đổi dữ liệu
-└── run.py                # Script chạy ứng dụng
+│   ├── ingest.py        # CSV → curated parquet
+│   └── store.py         # TenderStore + ContractorStore
+├── ranking/
+│   ├── lexical.py       # TF-IDF vectorizer
+│   ├── semantic.py      # Sentence-transformer (optional)
+│   └── hybrid.py        # Hybrid ranker
+├── services/
+│   ├── profile.py       # Company profiles
+│   ├── recommendation.py # Recommendation engine
+│   └── competitor.py    # Competitor analysis
+└── ui/
+    └── streamlit_app.py  # Streamlit UI
 ```
 
-## Cách cài đặt
+## Artifact
 
-### Yêu cầu hệ thống
+| File | Ý nghĩa |
+|------|---------|
+| `data/curated/contractor_history.parquet` | Dữ liệu bidder-level đã chuẩn hóa |
+| `data/curated/tender_snapshot.parquet` | Dữ liệu tender-level (mỗi gói 1 dòng) |
+| `artifacts/company_profiles.parquet` | Profile tổng hợp từng doanh nghiệp |
+| `artifacts/hybrid_index.joblib` | TF-IDF matrix |
+| `artifacts/metadata.json` | Thông tin audit |
 
-- Python 3.8 trở lên
-- pip (trình quản lý thư viện Python)
+## Trọng số scoring (mặc định)
 
-### Các thư viện cần cài đặt
+| Thành phần | Trọng số |
+|------------|-----------|
+| Lexical (TF-IDF) | 54% |
+| Historical fit | 23% |
+| Price fit | 15% |
+| Recency | 8% |
 
-Các thư viện cần thiết để chạy ứng dụng:
+Khi bật semantic (cài `sentence-transformers`): lexical + semantic mỗi thành phần chiếm 35%.
 
-| Thư viện | Phiên bản tối thiểu | Mục đích |
-|----------|---------------------|----------|
-| streamlit | >=1.28.0 | Tạo giao diện web |
-| pandas | >=2.0.0 | Xử lý và phân tích dữ liệu |
-| scikit-learn | >=1.3.0 | Machine learning (TF-IDF, Cosine Similarity) |
-| numpy | >=1.24.0 | Tính toán số học |
-| xlsxwriter | >=3.1.0 | Xuất file Excel |
+## Cấu hình `.env`
 
-### Các bước cài đặt chi tiết
-
-**Bước 1: Tải xuống mã nguồn**
-```bash
-git clone <repository-url>
-cd <project-folder>
+```env
+DAUTHAU_RAW_CSV_PATH=data/dauthau_data.csv
+DAUTHAU_CURATED_DIR=data/curated
+DAUTHAU_ARTIFACTS_DIR=artifacts
+DAUTHAU_SEMANTIC_ENABLED=false
+DAUTHAU_SEMANTIC_MODEL_NAME=BAAI/bge-m3
+DAUTHAU_TOP_K_RESULTS=20
 ```
-
-**Bước 2: Tạo môi trường ảo (khuyến nghị)**
-```bash
-# Tạo môi trường ảo
-python -m venv venv
-
-# Kích hoạt môi trường ảo
-# Windows
-venv\Scripts\activate
-
-# Linux/Mac
-source venv/bin/activate
-```
-
-**Bước 3: Cài đặt các thư viện từ requirements.txt**
-```bash
-pip install -r requirements.txt
-```
-
-**Bước 4: Cài đặt từng thư viện (thay thế)**
-Nếu không dùng requirements.txt, có thể cài đặt từng thư viện:
-```bash
-pip install streamlit
-pip install pandas
-pip install scikit-learn
-pip install numpy
-pip install xlsxwriter
-```
-
-## Cách chạy ứng dụng
-
-### Cách 1: Chạy trực tiếp bằng Streamlit
-```bash
-streamlit run app.py
-```
-
-### Cách 2: Chạy bằng file run.py
-```bash
-python run.py
-```
-
-### Cách 3: Chạy bằng file run_fast.bat (Windows)
-```bash
-run_fast.bat
-```
-
-### Sau khi chạy thành công
-
-- Ứng dụng sẽ tự động mở trên trình duyệt tại địa chỉ: `http://localhost:8501`
-- Nếu không tự mở, hãy mở trình duyệt và truy cập địa chỉ trên
-
-## Xử lý sự cố
-
-### Lỗi không tìm thấy module
-```bash
-# Cài đặt lại tất cả thư viện
-pip install --upgrade -r requirements.txt
-```
-
-### Lỗi xung đột phiên bản
-```bash
-# Gỡ cài đặt và cài đặt lại
-pip uninstall -r requirements.txt -y
-pip install -r requirements.txt
-```
-
-### Lỗi không tìm thấy file dữ liệu
-- Đảm bảo thư mục `data/` chứa file `dauthau_data.csv`
-- Đảm bảo thư mục `models/` chứa các file `.pkl`
-
-## Tính năng
-
-- Tìm kiếm gói thầu theo tên/danh mục
-- Lọc theo vùng miền (Miền Bắc, Miền Trung, Miền Nam)
-- Lọc theo tỉnh/thành phố
-- Lọc theo ngày đăng tải
-- Gợi ý gói thầu phù hợp với doanh nghiệp dựa trên năng lực
-- Xuất kết quả ra file Excel
-
-## Tác giả
-
-Hệ thống được phát triển bởi VietinBank

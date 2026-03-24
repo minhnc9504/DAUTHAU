@@ -1,1 +1,2 @@
-python run.py
+@echo off
+python main.py run

@@ -1,0 +1,11 @@
+{
+  "built_at": "2026-03-24T10:33:19.890030",
+  "lexical_vocab_size": 76797,
+  "lexical_doc_count": 50001,
+  "semantic_ready": false,
+  "semantic_model": null,
+  "semantic_embedding_dim": null,
+  "profiles_count": 33498,
+  "tender_count": 50001,
+  "history_count": 125258
+}
