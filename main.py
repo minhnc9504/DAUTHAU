@@ -68,7 +68,7 @@ def _run_ingest(settings_module, *, quiet: bool = False) -> None:
 
     _print = functools.partial(print, flush=True)
 
-    from project_dau_thau.data.ingest import ingest
+    from data.ingest import ingest
 
     settings = settings_module.SETTINGS
     settings.ensure_dirs()
@@ -97,11 +97,11 @@ def _run_build_index(settings_module, *, quiet: bool = False) -> None:
         if not quiet:
             _print(msg)
 
-    from project_dau_thau.data.store import load_contractor_history, load_tender_snapshot
-    from project_dau_thau.ranking.hybrid import HybridRanker
-    from project_dau_thau.ranking.lexical import LexicalIndexer
-    from project_dau_thau.ranking.semantic import SemanticIndexer
-    from project_dau_thau.services.profile import build_all_profiles
+    from data.store import load_contractor_history, load_tender_snapshot
+    from ranking.hybrid import HybridRanker
+    from ranking.lexical import LexicalIndexer
+    from ranking.semantic import SemanticIndexer
+    from services.profile import build_all_profiles
 
     settings = settings_module.SETTINGS
     settings.ensure_dirs()
@@ -236,7 +236,7 @@ def _run_serve(*, quiet: bool = False) -> None:
     src_path = str(Path(__file__).parent / "src")
     env = os.environ.copy()
     env["PYTHONPATH"] = src_path
-    app_path = str(Path(__file__).parent / "src" / "project_dau_thau" / "ui" / "streamlit_app.py")
+    app_path = str(Path(__file__).parent / "src" / "ui" / "streamlit_app.py")
     cmd = [
         sys.executable, "-m", "streamlit", "run",
         "--server.headless=true",
@@ -320,8 +320,8 @@ def main() -> None:
     args = parser.parse_args()
 
     # Import settings sau khi đã setup sys.path
-    from project_dau_thau import settings as settings_module
-    settings = settings_module.SETTINGS
+    from settings import SETTINGS as settings
+    # settings = settings_module
 
     if args.command == "setup":
         _pip_install()
@@ -352,7 +352,7 @@ def main() -> None:
         if _needs_rebuild(settings):
             print("🔄 Bước 1: Đang đồng bộ dữ liệu từ CSV...", flush=True)
             print("🚀 Đang đọc dữ liệu gốc...", flush=True)
-            from project_dau_thau.data.ingest import _detect_encoding
+            from data.ingest import _detect_encoding
 
             _run_ingest(settings_module, quiet=True)
             enc_used = _detect_encoding(str(settings.raw_csv_path))

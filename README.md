@@ -78,4 +78,27 @@ DAUTHAU_ARTIFACTS_DIR=artifacts
 DAUTHAU_SEMANTIC_ENABLED=false
 DAUTHAU_SEMANTIC_MODEL_NAME=BAAI/bge-m3
 DAUTHAU_TOP_K_RESULTS=20
+
+# Trọng số scoring
+DAUTHAU_LEXICAL_WEIGHT=0.35
+DAUTHAU_SEMANTIC_WEIGHT=0.35
+DAUTHAU_HISTORICAL_WEIGHT=0.15
+DAUTHAU_PRICE_WEIGHT=0.10
+DAUTHAU_RECENCY_WEIGHT=0.05
+
+# Tiêu đề ứng dụng
+DAUTHAU_APP_TITLE=Hệ thống Gợi ý gói thầu phù hợp cho Doanh nghiệp
 ```
+
+## Tham số cấu hình (trong settings.py)
+
+| Tham số | Mặc định | Ý nghĩa |
+|---------|-----------|---------|
+| `recency_urgent_days` | 7 | Số ngày để coi là khẩn cấp |
+| `recency_good_days` | 30 | Số ngày để coi là hợp lý |
+| `recency_normal_days` | 90 | Số ngày để coi là bình thường |
+| `historical_field_score` | 50 | Điểm khi trùng lĩnh vực mạnh |
+| `historical_province_score` | 30 | Điểm khi trùng địa bàn mạnh |
+| `historical_investor_score` | 20 | Điểm khi trùng chủ đầu tư quen |
+| `competitor_rate_multiplier` | 2.5 | Hệ số nhân cho tính điểm đối thủ |
+| `competitor_min_join` | 2 | Số lần tham gia tối thiểu để xem là đối thủ |
