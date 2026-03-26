@@ -24,7 +24,7 @@ class SemanticIndexer:
         self.ready = ready
 
     @classmethod
-    def build(cls, tender_df: pd.DataFrame, model_name: str = "BAAI/bge-m3") -> "SemanticIndexer":
+    def build(cls, tender_df: pd.DataFrame, model_name: str = "paraphrase-multilingual-MiniLM-L12-v2") -> "SemanticIndexer":
         try:
             from sentence_transformers import SentenceTransformer
 
@@ -36,7 +36,7 @@ class SemanticIndexer:
             print(f"  [Semantic] Đang encode {len(texts)} tender...")
             embeddings = model.encode(
                 texts,
-                batch_size=64,
+                batch_size=256,
                 show_progress_bar=True,
                 normalize_embeddings=True,
             )

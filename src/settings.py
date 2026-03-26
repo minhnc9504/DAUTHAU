@@ -47,7 +47,7 @@ class AppSettings:
     artifacts_dir: str = field(default_factory=lambda: _env("DAUTHAU_ARTIFACTS_DIR", "artifacts"))
 
     semantic_enabled: bool = field(default_factory=lambda: _env_bool("DAUTHAU_SEMANTIC_ENABLED", False))
-    semantic_model_name: str = field(default_factory=lambda: _env("DAUTHAU_SEMANTIC_MODEL_NAME", "BAAI/bge-m3"))
+    semantic_model_name: str = field(default_factory=lambda: _env("DAUTHAU_SEMANTIC_MODEL_NAME", "paraphrase-multilingual-MiniLM-L12-v2"))
 
     top_k_results: int = field(default_factory=lambda: _env_int("DAUTHAU_TOP_K_RESULTS", 20))
     rerank_top_k: int = field(default_factory=lambda: _env_int("DAUTHAU_RERANK_TOP_K", 50))

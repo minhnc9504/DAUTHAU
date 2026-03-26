@@ -70,7 +70,7 @@ def _run_ingest(settings_module, *, quiet: bool = False) -> None:
 
     from data.ingest import ingest
 
-    settings = settings_module.SETTINGS
+    settings = settings_module
     settings.ensure_dirs()
 
     if not Path(settings.raw_csv_path).exists():
@@ -103,7 +103,7 @@ def _run_build_index(settings_module, *, quiet: bool = False) -> None:
     from ranking.semantic import SemanticIndexer
     from services.profile import build_all_profiles
 
-    settings = settings_module.SETTINGS
+    settings = settings_module
     settings.ensure_dirs()
 
     if not settings.contractor_history_path.exists():
@@ -320,8 +320,7 @@ def main() -> None:
     args = parser.parse_args()
 
     # Import settings sau khi đã setup sys.path
-    from settings import SETTINGS as settings
-    # settings = settings_module
+    from settings import SETTINGS as settings_module
 
     if args.command == "setup":
         _pip_install()
@@ -349,13 +348,13 @@ def main() -> None:
         print("🚀 ĐANG KHỞI ĐỘNG HỆ THỐNG GỢI Ý GÓI THẦU", flush=True)
         print("=" * 50, flush=True)
 
-        if _needs_rebuild(settings):
+        if _needs_rebuild(settings_module):
             print("🔄 Bước 1: Đang đồng bộ dữ liệu từ CSV...", flush=True)
             print("🚀 Đang đọc dữ liệu gốc...", flush=True)
             from data.ingest import _detect_encoding
 
             _run_ingest(settings_module, quiet=True)
-            enc_used = _detect_encoding(str(settings.raw_csv_path))
+            enc_used = _detect_encoding(str(settings_module.raw_csv_path))
             print(f"✅ Đọc thành công với bảng mã: {enc_used}", flush=True)
             print("✅ Đã chuyển đổi dữ liệu sạch sang Parquet thành công!", flush=True)
             print("🧠 Bước 2: Đang cập nhật bộ não AI...", flush=True)
@@ -382,7 +381,7 @@ def main() -> None:
         return
 
     if args.command == "status":
-        _print_status(settings)
+        _print_status(settings_module)
         return
 
 

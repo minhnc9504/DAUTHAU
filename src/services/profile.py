@@ -97,43 +97,46 @@ def build_all_profiles(history_df: pd.DataFrame, output_path: str | Path) -> pd.
         price_high=("bidecontractorinputresultdtobidprice", lambda x: x.dropna()[x.dropna() > 0].quantile(0.75) if (x.dropna() > 0).any() else 0),
     ).reset_index()
 
-    # Taxcode (first non-null)
-    taxcodes = grp["taxcode"].apply(lambda x: next((str(v) for v in x.dropna() if str(v).strip()), "")).reset_index(drop=True)
-    stats["taxcode"] = taxcodes
+    # ── Gộp tất cả groupby.apply() thành 1 lần duy nhất ──
+    print("  [Profile] Đang xây dựng text profile + metadata (gộp 1 pass)...", flush=True)
+
+    def _profile_one_group(g):
+        names = g["bidonotifycontractormbidname"].fillna("").astype(str).tolist()
+        winners_mask = g["is_winner"].values
+        won_names = [n for n, w in zip(names, winners_mask) if w]
+        seen = set(won_names)
+        all_names = [n for n in names if n]
+        deduped = list(dict.fromkeys(won_names + [n for n in all_names if n not in seen]))
+        text = " ".join(deduped)
+
+        taxcode = next(
+            (str(v) for v in g["taxcode"].dropna() if str(v).strip()),
+            "",
+        )
+        strong_fields = (
+            g["bidonotifycontractorminvestfield"].value_counts().head(5).index.tolist()
+        )
+        strong_provinces = (
+            g["provincename"].value_counts().head(5).index.tolist()
+        )
+        familiar_investors = (
+            g["bidonotifycontractorminvestorname"].value_counts().head(5).index.tolist()
+        )
+        return pd.Series({
+            "taxcode": taxcode,
+            "text_profile": text,
+            "strong_fields": strong_fields,
+            "strong_provinces": strong_provinces,
+            "familiar_investors": familiar_investors,
+        })
+
+    extra = grp.apply(_profile_one_group, include_groups=False).reset_index(drop=True)
+    stats = pd.concat([stats, extra], axis=1)
 
     # Win rate
     stats["win_rate"] = (
         stats["won_count"] / stats["participated_count"] * 100
     ).round(1).fillna(0.0)
-
-    # Top fields
-    def top_values(series, n=5):
-        return series.value_counts().head(n).index.tolist()
-
-    strong_fields = grp["bidonotifycontractorminvestfield"].apply(top_values).reset_index(drop=True)
-    strong_provinces = grp["provincename"].apply(top_values).reset_index(drop=True)
-    familiar_investors = grp["bidonotifycontractorminvestorname"].apply(top_values).reset_index(drop=True)
-
-    stats["strong_fields"] = strong_fields
-    stats["strong_provinces"] = strong_provinces
-    stats["familiar_investors"] = familiar_investors
-
-    # Build text_profile: won bids first, then participated (no dup)
-    print("  [Profile] Đang xây dựng text profile...", flush=True)
-
-    won_names = grp.apply(
-        lambda g: g[g["is_winner"]]["bidonotifycontractormbidname"].fillna("").tolist()
-    ).reset_index(drop=True)
-
-    participated_names = grp["bidonotifycontractormbidname"].fillna("").apply(list).reset_index(drop=True)
-
-    text_profiles = []
-    for w, p in zip(won_names, participated_names):
-        seen = set(w)
-        parts = list(w) + [n for n in p if n not in seen]
-        text_profiles.append(" ".join(parts))
-
-    stats["text_profile"] = text_profiles
 
     # Fill 0 for missing prices
     stats["price_median"] = stats["price_median"].fillna(0.0)

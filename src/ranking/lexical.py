@@ -19,7 +19,7 @@ class LexicalIndexer:
         texts = tender_df["tender_text_ascii"].fillna("").tolist()
         tender_ids = tender_df["bidonotifycontractormnotifyno"].tolist()
 
-        vectorizer = TfidfVectorizer(ngram_range=(1, 2), min_df=2, max_df=0.95)
+        vectorizer = TfidfVectorizer(ngram_range=(1, 2), min_df=2, max_df=0.95, max_features=25000, sublinear_tf=True)
         matrix = vectorizer.fit_transform(texts)
 
         return cls(vectorizer, matrix, tender_ids)

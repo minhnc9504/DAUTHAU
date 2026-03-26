@@ -1,0 +1,38 @@
+DAUTHAU/
+│
+├── main.py                          ← ĐIỂM BẮT ĐẦU (Remote điều khiển)
+│
+├── requirements.txt                  ← Danh sách thư viện cần cài
+├── .env                             ← Biến môi trường (đường dẫn file, cấu hình)
+│
+├── data/                            ← Dữ liệu gốc
+│   └── dauthau_data.csv             ← File CSV VietinBank gửi (DỮ LIỆU ĐẦU VÀO)
+│
+├── src/
+│   ├── settings.py                  ← Cấu hình toàn hệ thống
+│   │
+│   ├── data/
+│   │   ├── ingest.py                ← BƯỚC 1: Đọc CSV → Làm sạch → Lưu Parquet
+│   │   └── store.py                 ← Truy vấn dữ liệu Parquet (đọc ra)
+│   │
+│   ├── ranking/
+│   │   ├── lexical.py               ← Thuật toán 1: Tìm kiếm theo TỪ (TF-IDF)
+│   │   ├── semantic.py              ← Thuật toán 2: Tìm kiếm theo Ý NGHĨA (AI)
+│   │   └── hybrid.py                ← Thuật toán 3: KẾT HỢP tất cả → CHẤM ĐIỂM
+│   │
+│   ├── services/
+│   │   ├── profile.py               ← Xây hồ sơ năng lực cho từng công ty
+│   │   ├── competitor.py            ← Phân tích đối thủ cạnh tranh
+│   │   └── recommendation.py       ← Engine gợi ý (dùng ít, UI gọi thẳng hybrid)
+│   │
+│   └── ui/
+│       └── streamlit_app.py         ← Giao diện web người dùng
+│
+├── artifacts/                       ← THƯ MỤC TẠM (tự tạo khi chạy)
+│   ├── company_profiles.parquet     ← Hồ sơ tất cả công ty
+│   ├── hybrid_index.joblib         ← Bộ index (lexical + semantic)
+│   └── metadata.json                ← Thông tin phiên bản, số liệu
+│
+└── data/curated/                   ← THƯ MỤC TẠM (tự tạo khi chạy)
+    ├── contractor_history.parquet   ← Lịch sử công ty đấu thầu
+    └── tender_snapshot.parquet      ← Danh sách tất cả gói thầu
