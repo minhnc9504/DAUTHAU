@@ -432,7 +432,7 @@ def _do_recommend(tender_store, ranker, contractor_store, profiles_df,
 
     with st.spinner("Đang phân tích..."):
         ranked = ranker.score(query_text, tender_store.df, profile=None)
-
+    # Lọc gói thầu đã đóng thầu (nếu có ngày hiệu lực)
     # from datetime import datetime
     # now = datetime.now()
     # date_filtered = []
@@ -705,7 +705,7 @@ def _render_health_tab(metadata, tender_store, contractor_store, sem_ready):
         st.markdown(f"  {status} `{name}`: `{path}`")
 
     st.markdown("---")
-    st.markdown("**⚙️ Trọng số hiện tại:**")
+    st.markdown("**⚙️ Trọng số tính điểm hiện tại:**")
     weights = SETTINGS.get_normalized_weights(sem_ready)
     for k, v in weights.items():
         st.markdown(f"  - `{k}`: {v:.2f} ({v*100:.0f}%)")
