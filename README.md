@@ -14,7 +14,6 @@
 - [Cấu trúc project](#cấu-trúc-project)
 - [Cấu hình](#cấu-hình)
 - [Dữ liệu & Artifact](#dữ-liệu--artifact)
-- [Định hướng phát triển](#định-hướng-phát-triển)
 
 ---
 
